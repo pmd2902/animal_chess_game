@@ -15,7 +15,7 @@ export default function GamePage() {
   }, []);
 
   return (
-    <main className="relative w-screen h-screen overflow-hidden bg-sky-200 select-none">
+    <main className="relative w-dvw h-dvh overflow-hidden bg-sky-200 select-none">
       <GameScene isMenuPreview={false} />
       <GameMenu />
       <SettingsPanel />

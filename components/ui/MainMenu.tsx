@@ -30,7 +30,7 @@ export function MainMenu() {
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-sky-200 select-none">
+    <div className="relative w-dvw h-dvh overflow-hidden bg-sky-200 select-none">
       {/* 3D ANIMATED VIETNAMESE MOUNTAIN VALLEY & BOARD BACKGROUND */}
       <div className="absolute inset-0 z-0">
         <GameScene isMenuPreview={true} />

@@ -15,13 +15,13 @@ export function TurnIndicator() {
   const isRed = currentPlayer === "red";
 
   return (
-    <div className="flex flex-col items-center gap-1.5 pointer-events-auto">
+    <div className="flex flex-col items-center gap-1 pointer-events-auto">
       <motion.div
         key={currentPlayer + (isAIThinking ? "-ai" : "")}
         initial={{ y: -12, opacity: 0, scale: 0.95 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         transition={{ type: "spring", stiffness: 360, damping: 24 }}
-        className={`flex items-center gap-2.5 px-5 py-2 rounded-full shadow-lg border-2 backdrop-blur-md ${
+        className={`flex items-center gap-1.5 sm:gap-2.5 px-3.5 py-1 sm:px-5 sm:py-2 rounded-full shadow-lg border-2 backdrop-blur-md ${
           isRed
             ? "bg-gradient-to-r from-red-600 via-rose-500 to-amber-500 text-white border-amber-200"
             : "bg-gradient-to-r from-sky-700 via-cyan-600 to-teal-500 text-white border-sky-200"
@@ -29,15 +29,15 @@ export function TurnIndicator() {
       >
         {isAIThinking ? (
           <>
-            <Bot className="w-5 h-5 animate-spin text-amber-200" />
-            <span className="font-extrabold text-sm sm:text-base tracking-wide">
+            <Bot className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-amber-200" />
+            <span className="font-extrabold text-xs sm:text-base tracking-wide">
               AI đang suy nghĩ...
             </span>
           </>
         ) : (
           <>
-            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-amber-200 animate-pulse" />
-            <span className="font-extrabold text-sm sm:text-base tracking-wide">
+            <Sparkles className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-amber-200 animate-pulse" />
+            <span className="font-extrabold text-xs sm:text-base tracking-wide">
               {isRed ? "Lượt Đội Hồng Lạc (Đỏ)" : "Lượt Đội Lam Sơn (Xanh)"}
             </span>
             <span className="hidden sm:inline-block text-xs px-2 py-0.5 rounded-full bg-black/20 font-semibold">

@@ -66,7 +66,7 @@ function RoomSessionContent({ params }: { params: Promise<{ id: string }> }) {
   }, [moveHistory, roomCode]);
 
   return (
-    <main className="relative w-screen h-screen overflow-hidden bg-sky-200 select-none">
+    <main className="relative w-dvw h-dvh overflow-hidden bg-sky-200 select-none">
       <GameScene isMenuPreview={false} />
       <GameMenu />
       <SettingsPanel />
@@ -83,7 +83,7 @@ export default function OnlineRoomGamePage({
   return (
     <Suspense
       fallback={
-        <div className="w-screen h-screen flex items-center justify-center bg-sky-200 text-amber-950 font-black text-lg">
+        <div className="w-dvw h-dvh flex items-center justify-center bg-sky-200 text-amber-950 font-black text-lg">
           Đang kết nối Phòng Đại Ngàn...
         </div>
       }

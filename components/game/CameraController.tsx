@@ -27,24 +27,29 @@ export function CameraController({ isMenuPreview = false }: CameraControllerProp
   const desiredPositionRef = useRef(new THREE.Vector3(0, 10.5, 9.8));
   const desiredTargetRef = useRef(new THREE.Vector3(0, 0, 0.25));
 
-  // Responsive distance multiplier for mobile portrait screens so the 7x9 board always fits comfortably
-  const isPortraitMobile = size.width < 680 || size.width / Math.max(1, size.height) < 0.85;
-  const mobileScale = isPortraitMobile ? 1.32 : 1.0;
+  // Responsive distance multiplier for mobile portrait screens so the 7x9 board always fits
+  // comfortably between the top HUD bar and bottom player panels without clipping corners
+  const aspect = size.width / Math.max(1, size.height);
+  const isPortraitMobile = size.width < 680 || aspect < 0.85;
+  const mobileScale = isPortraitMobile
+    ? Math.min(1.85, Math.max(1.48, 0.82 / Math.max(0.42, aspect)))
+    : 1.0;
 
   useEffect(() => {
     isTransitioningRef.current = true;
     const zoomFactor = cameraZoom * mobileScale;
+    const targetZOffset = isPortraitMobile ? 0.55 : 0.35;
 
     if (cameraView === "topdown") {
       // VIEW 2: Top-down strategic view
       desiredPositionRef.current.set(0, 15.2 * zoomFactor, 1.2 * zoomFactor);
-      desiredTargetRef.current.set(0, 0, 0);
+      desiredTargetRef.current.set(0, 0, isPortraitMobile ? 0.25 : 0);
     } else {
       // VIEW 1: Isometric / ~45 degree angled gameplay view
-      desiredPositionRef.current.set(0, 10.2 * zoomFactor, 9.6 * zoomFactor);
-      desiredTargetRef.current.set(0, 0, 0.35);
+      desiredPositionRef.current.set(0, 10.6 * zoomFactor, 9.4 * zoomFactor);
+      desiredTargetRef.current.set(0, 0, targetZOffset);
     }
-  }, [cameraView, cameraZoom, cameraResetTrigger, mobileScale]);
+  }, [cameraView, cameraZoom, cameraResetTrigger, mobileScale, isPortraitMobile]);
 
   useFrame((state, delta) => {
     const cam = state.camera;
