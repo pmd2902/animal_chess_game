@@ -602,22 +602,21 @@ export function GameBoard() {
         ))}
 
       {/* INVALID MOVE 3D WARNING PULSE ON TARGET CELL */}
-      {invalidMoveFeedback &&
-        Date.now() - invalidMoveFeedback.timestamp < 1800 && (
-          <group
-            position={boardToWorldPosition(invalidMoveFeedback.targetPosition, 0.25)}
-          >
-            <mesh rotation={[-Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[0.35, 0.52, 24]} />
-              <meshBasicMaterial
-                color="#EF233C"
-                transparent
-                opacity={0.85}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-          </group>
-        )}
+      {invalidMoveFeedback && (
+        <group
+          position={boardToWorldPosition(invalidMoveFeedback.targetPosition, 0.25)}
+        >
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.35, 0.52, 24]} />
+            <meshBasicMaterial
+              color="#EF233C"
+              transparent
+              opacity={0.85}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        </group>
+      )}
     </group>
   );
 }

@@ -198,14 +198,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Otherwise, invalid destination for the selected piece -> shake feedback!
       const reasonVi = explainInvalidMove(state.selectedPiece, pos, state.pieces);
       soundManager.playSfx("invalid");
+      const feedbackTimestamp = Date.now();
       set({
         invalidMoveFeedback: {
           pieceId: state.selectedPiece.id,
           targetPosition: pos,
           reasonVi,
-          timestamp: Date.now(),
+          timestamp: feedbackTimestamp,
         },
       });
+      setTimeout(() => {
+        if (get().invalidMoveFeedback?.timestamp === feedbackTimestamp) {
+          set({ invalidMoveFeedback: null });
+        }
+      }, 2200);
       return;
     }
 
@@ -214,6 +220,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       get().selectPiece(clickedPiece);
     } else if (clickedPiece && clickedPiece.player !== state.currentPlayer) {
       soundManager.playSfx("invalid");
+      const feedbackTimestamp = Date.now();
       set({
         invalidMoveFeedback: {
           pieceId: clickedPiece.id,
@@ -222,9 +229,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
             state.currentPlayer === "red"
               ? "Đang là lượt của Đội Hồng Lạc (Đỏ)!"
               : "Đang là lượt của Đội Lam Sơn (Xanh)!",
-          timestamp: Date.now(),
+          timestamp: feedbackTimestamp,
         },
       });
+      setTimeout(() => {
+        if (get().invalidMoveFeedback?.timestamp === feedbackTimestamp) {
+          set({ invalidMoveFeedback: null });
+        }
+      }, 2200);
     }
   },
 

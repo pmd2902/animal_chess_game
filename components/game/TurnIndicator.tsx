@@ -49,8 +49,7 @@ export function TurnIndicator() {
 
       {/* Selected Piece Quick Info or Invalid Move Banner */}
       <AnimatePresence mode="wait">
-        {invalidMoveFeedback &&
-        Date.now() - invalidMoveFeedback.timestamp < 2500 ? (
+        {invalidMoveFeedback ? (
           <motion.div
             key={`err-${invalidMoveFeedback.timestamp}`}
             initial={{ opacity: 0, y: -6 }}

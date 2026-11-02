@@ -13,7 +13,7 @@ interface CameraControllerProps {
 }
 
 export function CameraController({ isMenuPreview = false }: CameraControllerProps) {
-  const { camera, size } = useThree();
+  const size = useThree((s) => s.size);
   const controlsRef = useRef<OrbitControlsImpl>(null);
 
   const cameraView = useSettingsStore((s) => s.cameraView);
@@ -46,17 +46,19 @@ export function CameraController({ isMenuPreview = false }: CameraControllerProp
     }
   }, [cameraView, cameraZoom, cameraResetTrigger, mobileScale]);
 
-  useFrame(({ clock }, delta) => {
+  useFrame((state, delta) => {
+    const cam = state.camera;
+    const clock = state.clock;
     if (isMenuPreview) {
       // Very slow, peaceful scenic orbit in the 3D Main Menu background
       const t = clock.getElapsedTime() * 0.055;
       const radius = 14.5 * mobileScale;
-      camera.position.set(
+      cam.position.set(
         Math.sin(t) * radius,
         9.2 + Math.sin(t * 1.2) * 0.5,
         Math.cos(t) * radius
       );
-      camera.lookAt(0, 0.4, 0);
+      cam.lookAt(0, 0.4, 0);
       return;
     }
 
@@ -69,7 +71,7 @@ export function CameraController({ isMenuPreview = false }: CameraControllerProp
         12.5 * mobileScale,
         Math.cos(t * 0.5) * victoryRadius
       );
-      camera.position.lerp(targetPos, Math.min(1, delta * 1.6));
+      cam.position.lerp(targetPos, Math.min(1, delta * 1.6));
       if (controlsRef.current) {
         controlsRef.current.target.lerp(new THREE.Vector3(0, 0.2, 0), delta * 2.5);
         controlsRef.current.update();
@@ -95,19 +97,22 @@ export function CameraController({ isMenuPreview = false }: CameraControllerProp
 
     // Smooth camera interpolation toward desired preset view
     if (isTransitioningRef.current) {
-      camera.position.lerp(desiredPositionRef.current, Math.min(1, delta * 4.5));
+      cam.position.lerp(desiredPositionRef.current, Math.min(1, delta * 4.5));
       if (controlsRef.current) {
         controlsRef.current.target.lerp(desiredTargetRef.current, Math.min(1, delta * 5.0));
         controlsRef.current.update();
       }
-      if (camera.position.distanceTo(desiredPositionRef.current) < 0.06) {
+      if (cam.position.distanceTo(desiredPositionRef.current) < 0.06) {
         isTransitioningRef.current = false;
       }
     }
 
     if (shakeOffsetX !== 0 || shakeOffsetY !== 0) {
-      camera.position.x += shakeOffsetX;
-      camera.position.y += shakeOffsetY;
+      cam.position.set(
+        cam.position.x + shakeOffsetX,
+        cam.position.y + shakeOffsetY,
+        cam.position.z
+      );
     }
   });
 
