@@ -24,30 +24,36 @@ export function CameraController({ isMenuPreview = false }: CameraControllerProp
   const activeAnimation = useGameStore((s) => s.activeAnimation);
 
   const isTransitioningRef = useRef(true);
-  const desiredPositionRef = useRef(new THREE.Vector3(0, 10.5, 9.8));
-  const desiredTargetRef = useRef(new THREE.Vector3(0, 0, 0.25));
+  const desiredPositionRef = useRef(new THREE.Vector3(0, 11.8, 10.6));
+  const desiredTargetRef = useRef(new THREE.Vector3(0, 0, 0.55));
 
-  // Responsive distance multiplier for mobile portrait screens so the 7x9 board always fits
-  // comfortably between the top HUD bar and bottom player panels without clipping corners
+  // Responsive distance multiplier for mobile portrait screens:
+  // Because Three.js PerspectiveCamera `fov` is vertical, horizontal half-FOV is `atan(tan(fov/2) * aspect)`.
+  // Scaling by `1.04 / aspect` with a steeper elevation angle guarantees the entire 7x9 board width
+  // (including corner lanterns and rank badges at the front row) fits inside any portrait phone screen.
   const aspect = size.width / Math.max(1, size.height);
   const isPortraitMobile = size.width < 680 || aspect < 0.85;
   const mobileScale = isPortraitMobile
-    ? Math.min(1.85, Math.max(1.48, 0.82 / Math.max(0.42, aspect)))
+    ? Math.min(2.65, Math.max(1.65, 1.04 / Math.max(0.38, aspect)))
     : 1.0;
 
   useEffect(() => {
     isTransitioningRef.current = true;
     const zoomFactor = cameraZoom * mobileScale;
-    const targetZOffset = isPortraitMobile ? 0.55 : 0.35;
 
     if (cameraView === "topdown") {
       // VIEW 2: Top-down strategic view
-      desiredPositionRef.current.set(0, 15.2 * zoomFactor, 1.2 * zoomFactor);
-      desiredTargetRef.current.set(0, 0, isPortraitMobile ? 0.25 : 0);
+      desiredPositionRef.current.set(0, 16.6 * zoomFactor, 1.2 * zoomFactor);
+      desiredTargetRef.current.set(0, 0, isPortraitMobile ? 0.2 : 0.15);
+    } else if (isPortraitMobile) {
+      // VIEW 1 (Mobile Portrait): Steeper overhead isometric angle so the front of the board
+      // does not foreshorten out of the narrow horizontal viewport
+      desiredPositionRef.current.set(0, 14.2 * zoomFactor, 7.4 * zoomFactor);
+      desiredTargetRef.current.set(0, 0, 0.35);
     } else {
-      // VIEW 1: Isometric / ~45 degree angled gameplay view
-      desiredPositionRef.current.set(0, 10.6 * zoomFactor, 9.4 * zoomFactor);
-      desiredTargetRef.current.set(0, 0, targetZOffset);
+      // VIEW 1 (Desktop): Default zoomed out 1 step + forward target so bottom board corners are fully visible
+      desiredPositionRef.current.set(0, 11.8 * zoomFactor, 10.6 * zoomFactor);
+      desiredTargetRef.current.set(0, 0, 0.55);
     }
   }, [cameraView, cameraZoom, cameraResetTrigger, mobileScale, isPortraitMobile]);
 
@@ -133,7 +139,7 @@ export function CameraController({ isMenuPreview = false }: CameraControllerProp
       zoomSpeed={0.5}
       enablePan={false}
       minDistance={7.5}
-      maxDistance={22}
+      maxDistance={48}
       minPolarAngle={0.12}
       maxPolarAngle={Math.PI / 2.3}
       minAzimuthAngle={-Math.PI / 3.2}

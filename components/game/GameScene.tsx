@@ -23,7 +23,7 @@ export function GameScene({ isMenuPreview = false }: GameSceneProps) {
       <Canvas
         shadows
         dpr={[1, 2]}
-        camera={{ position: [0, 10.5, 9.8], fov: 42, near: 0.2, far: 110 }}
+        camera={{ position: [0, 11.8, 10.6], fov: 42, near: 0.2, far: 140 }}
         onPointerMissed={() => {
           if (!isMenuPreview) {
             selectPiece(null);
@@ -32,7 +32,7 @@ export function GameScene({ isMenuPreview = false }: GameSceneProps) {
       >
         {/* Warm Vietnamese Mountain Valley Sky & Atmospheric Fog */}
         <color attach="background" args={["#A9DEF9"]} />
-        <fog attach="fog" args={["#CAE9FF", 18, 42]} />
+        <fog attach="fog" args={["#CAE9FF", 40, 92]} />
 
         {/* Soft Natural Lighting */}
         <ambientLight intensity={0.78} color="#FFF8F0" />
