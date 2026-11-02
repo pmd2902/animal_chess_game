@@ -123,6 +123,8 @@ interface GamePieceProps {
 
 export function GamePiece({ piece }: GamePieceProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const visualGroupRef = useRef<THREE.Group>(null);
+  const hoveredRef = useRef(false);
   const [hovered, setHovered] = useState(false);
 
   const selectedPiece = useGameStore((s) => s.selectedPiece);
@@ -157,7 +159,7 @@ export function GamePiece({ piece }: GamePieceProps) {
   });
 
   useFrame(({ clock }, delta) => {
-    if (!groupRef.current) return;
+    if (!groupRef.current || !visualGroupRef.current) return;
     const now = performance.now();
 
     // Read directly from Zustand store inside useFrame to guarantee 100% atomic
@@ -178,6 +180,8 @@ export function GamePiece({ piece }: GamePieceProps) {
       groupRef.current.position.set(initX, initY, initZ);
       groupRef.current.rotation.set(0, defaultYaw, 0);
       groupRef.current.scale.setScalar(1);
+      visualGroupRef.current.position.set(0, 0, 0);
+      visualGroupRef.current.scale.setScalar(1);
       hasInitializedRef.current = true;
     }
 
@@ -187,10 +191,12 @@ export function GamePiece({ piece }: GamePieceProps) {
       // so the piece never drops back down to the old cell before stepping forward!
       if (takeoffRef.current.animId !== liveAnim.id) {
         const [, startBaseY] = boardToWorldPosition(liveAnim.from, baseYOffset);
+        const currentWorldY =
+          groupRef.current.position.y + visualGroupRef.current.position.y;
         takeoffRef.current = {
           animId: liveAnim.id,
-          yBonus: Math.max(0, groupRef.current.position.y - startBaseY),
-          scaleBonus: Math.max(0, groupRef.current.scale.x - 1),
+          yBonus: Math.max(0, currentWorldY - startBaseY),
+          scaleBonus: Math.max(0, visualGroupRef.current.scale.x - 1),
         };
       }
 
@@ -208,12 +214,13 @@ export function GamePiece({ piece }: GamePieceProps) {
       );
 
       groupRef.current.position.set(...transform.position);
-      groupRef.current.scale.setScalar(transform.scaleMultiplier);
       groupRef.current.rotation.set(
         transform.pitchAngle,
         transform.yawAngle,
         0
       );
+      visualGroupRef.current.position.set(0, 0, 0);
+      visualGroupRef.current.scale.setScalar(transform.scaleMultiplier);
       return;
     }
 
@@ -229,7 +236,8 @@ export function GamePiece({ piece }: GamePieceProps) {
       if (progress < 0.55) {
         // Brace for impact
         groupRef.current.position.set(wx, wy, wz);
-        groupRef.current.scale.setScalar(1);
+        visualGroupRef.current.position.set(0, 0, 0);
+        visualGroupRef.current.scale.setScalar(1);
       } else {
         // Knocked away & spun on impact!
         const hitT = (progress - 0.55) / 0.45;
@@ -245,7 +253,8 @@ export function GamePiece({ piece }: GamePieceProps) {
           defaultYaw + hitT * 8,
           hitT * 3
         );
-        groupRef.current.scale.setScalar(shrink);
+        visualGroupRef.current.position.set(0, 0, 0);
+        visualGroupRef.current.scale.setScalar(shrink);
       }
       return;
     }
@@ -273,18 +282,21 @@ export function GamePiece({ piece }: GamePieceProps) {
         Math.sin(shakeElapsed * Math.PI * 10) * 0.12 * (1 - shakeElapsed);
     }
 
-    // Hover scale interpolation
-    const targetScale = liveSelected ? 1.12 : hovered ? 1.08 : 1.0;
-    const smoothFactor = Math.min(1, 1 - Math.exp(-18 * delta));
+    // Hover scale interpolation (applied ONLY to visualGroupRef so hitbox never oscillates!)
+    const isHovered = hoveredRef.current;
+    const targetScale = liveSelected ? 1.12 : isHovered ? 1.06 : 1.0;
+    const targetHoverLift = !liveSelected && isHovered ? 0.035 : 0;
+    const smoothFactor = Math.min(1, 1 - Math.exp(-16 * delta));
 
+    // Keep outer groupRef anchored smoothly to exact board cell coordinates (hitbox stays rock-solid!)
     groupRef.current.position.x = THREE.MathUtils.lerp(
       groupRef.current.position.x,
-      targetX + shakeX,
+      targetX,
       smoothFactor
     );
     groupRef.current.position.y = THREE.MathUtils.lerp(
       groupRef.current.position.y,
-      targetY + selectBounce,
+      targetY,
       smoothFactor
     );
     groupRef.current.position.z = THREE.MathUtils.lerp(
@@ -292,14 +304,28 @@ export function GamePiece({ piece }: GamePieceProps) {
       targetZ,
       smoothFactor
     );
+    groupRef.current.scale.setScalar(1);
 
-    const currentScale = groupRef.current.scale.x;
+    // Apply visual bounce, shake, and hover scale strictly on visualGroupRef
+    visualGroupRef.current.position.x = THREE.MathUtils.lerp(
+      visualGroupRef.current.position.x,
+      shakeX,
+      smoothFactor
+    );
+    visualGroupRef.current.position.y = THREE.MathUtils.lerp(
+      visualGroupRef.current.position.y,
+      selectBounce + targetHoverLift,
+      smoothFactor
+    );
+    visualGroupRef.current.position.z = 0;
+
+    const currentScale = visualGroupRef.current.scale.x;
     const nextScale = THREE.MathUtils.lerp(
       currentScale,
       targetScale,
       smoothFactor
     );
-    groupRef.current.scale.setScalar(nextScale);
+    visualGroupRef.current.scale.setScalar(nextScale);
 
     // Smoothly return rotation to default facing orientation using shortest angular path
     groupRef.current.rotation.x = THREE.MathUtils.lerp(
@@ -324,16 +350,22 @@ export function GamePiece({ piece }: GamePieceProps) {
     handleCellOrPieceClick(piece.position);
   };
 
-  const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
+  const handlePointerEnter = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    setHovered(true);
+    if (!hoveredRef.current) {
+      hoveredRef.current = true;
+      setHovered(true);
+    }
     if (typeof document !== "undefined") {
       document.body.style.cursor = "pointer";
     }
   };
 
-  const handlePointerOut = () => {
-    setHovered(false);
+  const handlePointerLeave = () => {
+    if (hoveredRef.current) {
+      hoveredRef.current = false;
+      setHovered(false);
+    }
     if (typeof document !== "undefined") {
       document.body.style.cursor = "auto";
     }
@@ -347,33 +379,52 @@ export function GamePiece({ piece }: GamePieceProps) {
       : "#F4A261";
 
   return (
-    <group
-      ref={groupRef}
-      onClick={handleClick}
-      onPointerOver={handlePointerOver}
-      onPointerOut={handlePointerOut}
-    >
-      {/* VIETNAMESE LACQUER & GOLD BASE PEDESTAL */}
-      <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.42, 0.47, 0.11, 28]} />
-        <meshStandardMaterial
-          color={pedestalMainColor}
-          roughness={0.32}
-          metalness={0.15}
-        />
-      </mesh>
-      <mesh position={[0, 0.095, 0]} receiveShadow>
-        <cylinderGeometry args={[0.38, 0.41, 0.03, 28]} />
-        <meshStandardMaterial
-          color={pedestalRimColor}
-          roughness={0.28}
-          metalness={0.45}
+    <group ref={groupRef}>
+      {/* STATIC INVISIBLE HITBOX CYLINDER:
+          Handles all pointer events on a single convex stationary shape so R3F never
+          raycasts 400+ animated sub-meshes and hover never flickers at piece edges! */}
+      <mesh
+        position={[0, 0.45, 0]}
+        onClick={handleClick}
+        onPointerEnter={handlePointerEnter}
+        onPointerLeave={handlePointerLeave}
+      >
+        <cylinderGeometry args={[0.45, 0.48, 0.92, 12]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0}
+          depthWrite={false}
+          colorWrite={false}
         />
       </mesh>
 
-      {/* SELECTION OR HOVER AURA RING */}
-      {(isSelected || hovered) && (
-        <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      {/* VISUAL GROUP: Scales, bounces, and shakes independently of the static hitbox */}
+      <group ref={visualGroupRef}>
+        {/* VIETNAMESE LACQUER & GOLD BASE PEDESTAL */}
+        <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
+          <cylinderGeometry args={[0.42, 0.47, 0.11, 28]} />
+          <meshStandardMaterial
+            color={pedestalMainColor}
+            roughness={0.32}
+            metalness={0.15}
+          />
+        </mesh>
+        <mesh position={[0, 0.095, 0]} receiveShadow>
+          <cylinderGeometry args={[0.38, 0.41, 0.03, 28]} />
+          <meshStandardMaterial
+            color={pedestalRimColor}
+            roughness={0.28}
+            metalness={0.45}
+          />
+        </mesh>
+
+        {/* SELECTION OR HOVER AURA RING (Kept mounted with `visible` toggle for zero GPU stutter) */}
+        <mesh
+          visible={isSelected || hovered}
+          position={[0, 0.02, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          raycast={() => null}
+        >
           <ringGeometry args={[0.46, 0.56, 32]} />
           <meshBasicMaterial
             color={
@@ -389,24 +440,24 @@ export function GamePiece({ piece }: GamePieceProps) {
             side={THREE.DoubleSide}
           />
         </mesh>
-      )}
 
-      {/* STANDALONE REUSABLE 3D ANIMAL MODEL COMPONENT */}
-      <AnimalModel
-        type={piece.type}
-        isRed={isRed}
-        animPhaseOffset={animPhaseOffset}
-      />
-
-      {/* FLOATING RANK & NAME BADGE (Pure WebGL Sprite - Zero DOM Unmount Race Conditions) */}
-      {(showRankBadges || hovered || isSelected) && (
-        <RankBadgeSprite
-          rankText={weakenedInTrap ? "0" : String(piece.rank)}
-          shortName={SHORT_NAME_VI[piece.type]}
+        {/* STANDALONE REUSABLE 3D ANIMAL MODEL COMPONENT */}
+        <AnimalModel
+          type={piece.type}
           isRed={isRed}
-          isSelected={isSelected}
+          animPhaseOffset={animPhaseOffset}
         />
-      )}
+
+        {/* FLOATING RANK & NAME BADGE (Pure WebGL Sprite - Zero DOM Unmount Race Conditions) */}
+        {(showRankBadges || hovered || isSelected) && (
+          <RankBadgeSprite
+            rankText={weakenedInTrap ? "0" : String(piece.rank)}
+            shortName={SHORT_NAME_VI[piece.type]}
+            isRed={isRed}
+            isSelected={isSelected}
+          />
+        )}
+      </group>
     </group>
   );
 }
