@@ -15,12 +15,18 @@ interface ImpactBurst {
 }
 
 function BurstRing({ burst }: { burst: ImpactBurst }) {
+  const groupRef = useRef<THREE.Group>(null);
   const ringRef = useRef<THREE.Mesh>(null);
   const particlesRef = useRef<THREE.Group>(null);
 
   useFrame(() => {
     const elapsed = (performance.now() - burst.startTime) / 650;
     const t = Math.min(1, Math.max(0, elapsed));
+
+    if (groupRef.current) {
+      groupRef.current.visible = t < 1;
+    }
+    if (t >= 1) return;
 
     if (ringRef.current) {
       const s = 0.3 + t * 2.2;
@@ -38,18 +44,19 @@ function BurstRing({ burst }: { burst: ImpactBurst }) {
           Math.sin(t * Math.PI) * 0.7,
           Math.sin(angle) * dist
         );
-        child.scale.setScalar(Math.max(0.01, 1 - t));
+        child.scale.setScalar(Math.max(0.001, 1 - t));
       });
     }
   });
 
   return (
-    <group position={burst.position}>
+    <group ref={groupRef} position={burst.position}>
       <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}>
         <ringGeometry args={[0.3, 0.45, 24]} />
         <meshBasicMaterial
           color={burst.color}
           transparent
+          depthWrite={false}
           opacity={0.9}
           side={THREE.DoubleSide}
         />

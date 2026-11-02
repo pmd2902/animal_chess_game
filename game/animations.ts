@@ -18,14 +18,14 @@ export function getAnimationDurationMs(moveType: MoveType): number {
   switch (moveType) {
     case "jump":
     case "jump_capture":
-      return 680;
+      return 620;
     case "capture":
-      return 580;
+      return 500;
     case "swim":
-      return 480;
+      return 420;
     case "normal":
     default:
-      return 420;
+      return 380;
   }
 }
 
@@ -33,79 +33,106 @@ export function getJumpArcHeight(moveType: MoveType): number {
   switch (moveType) {
     case "jump":
     case "jump_capture":
-      return 1.85;
+      return 1.65;
     case "capture":
-      return 0.95;
+      return 0.75;
     case "swim":
-      return 0.28;
+      return 0.18;
     case "normal":
     default:
-      return 0.55;
+      return 0.42;
   }
 }
 
 /**
- * Smooth ease-in-out cubic function for piece movement interpolation
+ * Shortest-path angular interpolation in radians (prevents 270-degree backward spins
+ * when interpolating between -PI/2 and +PI).
  */
-export function easeInOutCubic(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+export function lerpAngle(fromAngle: number, toAngle: number, t: number): number {
+  const twoPi = Math.PI * 2;
+  const delta = ((((toAngle - fromAngle) % twoPi) + Math.PI * 3) % twoPi) - Math.PI;
+  return fromAngle + delta * t;
 }
 
 /**
- * Calculates the 3D position and scale of a moving piece at normalized progress `t` (0..1).
+ * Responsive horizontal easing: starts moving immediately on frame 1 (no cubic dead-zone pause
+ * at t = 0) and decelerates smoothly into the target cell.
+ */
+export function easeResponsiveMove(t: number): number {
+  const clamped = Math.max(0, Math.min(1, t));
+  const smooth = clamped * clamped * (3 - 2 * clamped);
+  // Blend 35% linear takeoff with 65% smoothstep so initial velocity > 0 at t = 0
+  return 0.35 * clamped + 0.65 * smooth;
+}
+
+/**
+ * Smooth step function (C1 continuous derivative at endpoints)
+ */
+export function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Calculates the 3D position, scale, and smooth shortest-path rotation of a moving piece
+ * at normalized progress `t` (0..1).
  */
 export function interpolateMoveTransform(
   from: Position,
   to: Position,
   moveType: MoveType,
   t: number,
-  baseYOffset = 0.22
+  baseYOffset = 0.22,
+  defaultYaw = 0,
+  takeoffYBonus = 0,
+  takeoffScaleBonus = 0
 ): {
   position: [number, number, number];
   scaleMultiplier: number;
   pitchAngle: number;
-  targetYaw: number;
+  yawAngle: number;
 } {
   const [startX, startY, startZ] = boardToWorldPosition(from, baseYOffset);
   const [endX, endY, endZ] = boardToWorldPosition(to, baseYOffset);
 
   const clampedT = Math.max(0, Math.min(1, t));
-  const easedT = easeInOutCubic(clampedT);
+  const horizT = easeResponsiveMove(clampedT);
 
-  const x = startX + (endX - startX) * easedT;
-  const z = startZ + (endZ - startZ) * easedT;
+  const x = startX + (endX - startX) * horizT;
+  const z = startZ + (endZ - startZ) * horizT;
 
   const arcHeight = getJumpArcHeight(moveType);
-  // Parabolic arc sin(pi * t)
+  // Natural projectile vertical arc driven by clampedT (immediate upward velocity at t = 0)
+  // plus seamless decay of any selection-bounce elevation the piece already had at takeoff!
   const arcY = Math.sin(clampedT * Math.PI) * arcHeight;
+  const carryOverY = takeoffYBonus * (1 - smoothstep(0, 0.45, clampedT));
+  const y = startY + (endY - startY) * horizT + arcY + carryOverY;
 
-  // Landing bounce at the very end (t > 0.85)
-  let bounceY = 0;
-  let scaleMultiplier = 1;
-  if (clampedT < 0.15) {
-    // Anticipation squat & stretch
-    scaleMultiplier = 1 + Math.sin((clampedT / 0.15) * Math.PI) * 0.12;
-  } else if (clampedT > 0.85) {
-    const landT = (clampedT - 0.85) / 0.15;
-    bounceY = Math.sin(landT * Math.PI) * 0.12;
-    scaleMultiplier = 1 - Math.sin(landT * Math.PI) * 0.08;
-  }
+  // Seamless scale from selection scale (e.g. 1.12) into mid-air hop and down to 1.0 on landing
+  const carryOverScale = takeoffScaleBonus * (1 - smoothstep(0, 0.5, clampedT));
+  const scaleMultiplier = 1 + Math.sin(clampedT * Math.PI) * 0.06 + carryOverScale;
 
-  const y = startY + (endY - startY) * easedT + arcY + bounceY;
-
-  // Compute rotation toward destination
+  // Compute movement heading angle
   const dx = endX - startX;
   const dz = endZ - startZ;
-  const targetYaw = Math.atan2(dx, dz);
+  const moveHeadingYaw = Math.atan2(dx, dz);
 
-  // Subtle forward pitch while jumping/lunging
-  const pitchAngle = Math.sin(clampedT * Math.PI * 2) * (moveType.includes("jump") ? 0.35 : 0.18);
+  // Smoothly turn from defaultYaw toward moveHeadingYaw at the start of the step,
+  // and smoothly align back toward defaultYaw as the piece lands (t > 0.68),
+  // ALWAYS using shortest angular path (`lerpAngle`) so it never spins backward!
+  const turnIn = smoothstep(0.0, 0.2, clampedT);
+  const turnOut = smoothstep(0.68, 1.0, clampedT);
+  const yawDuringMove = lerpAngle(defaultYaw, moveHeadingYaw, turnIn);
+  const yawAngle = lerpAngle(yawDuringMove, defaultYaw, turnOut);
+
+  // Gentle forward lean during the hop
+  const pitchAngle =
+    Math.sin(clampedT * Math.PI) * (moveType.includes("jump") ? 0.24 : 0.1);
 
   return {
     position: [x, y, z],
     scaleMultiplier,
     pitchAngle,
-    targetYaw,
+    yawAngle,
   };
 }
-

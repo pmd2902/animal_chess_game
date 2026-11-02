@@ -6,7 +6,7 @@ import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { AnimalType, GamePiece as GamePieceType } from "@/game/gameTypes";
 import { ANIMAL_METADATA, isInOpponentTrap, isRiverCell } from "@/game/rules";
-import { boardToWorldPosition, interpolateMoveTransform } from "@/game/animations";
+import { boardToWorldPosition, interpolateMoveTransform, lerpAngle } from "@/game/animations";
 import { useGameStore } from "@/stores/gameStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 
@@ -564,14 +564,11 @@ export function GamePiece({ piece }: GamePieceProps) {
 
   const selectedPiece = useGameStore((s) => s.selectedPiece);
   const currentPlayer = useGameStore((s) => s.currentPlayer);
-  const activeAnimation = useGameStore((s) => s.activeAnimation);
-  const invalidMoveFeedback = useGameStore((s) => s.invalidMoveFeedback);
   const handleCellOrPieceClick = useGameStore((s) => s.handleCellOrPieceClick);
   const showRankBadges = useSettingsStore((s) => s.showRankBadges);
 
   const isSelected = selectedPiece?.id === piece.id;
   const isRed = piece.player === "red";
-  const inRiver = isRiverCell(piece.position);
   const weakenedInTrap = isInOpponentTrap(piece.position, piece.player);
 
   // Unique phase offset per piece so idle animations are organic and desynchronized
@@ -585,35 +582,72 @@ export function GamePiece({ piece }: GamePieceProps) {
 
   // Default facing direction: Red faces -Z (toward Blue at top), Blue faces +Z (toward Red at bottom)
   const defaultYaw = isRed ? Math.PI : 0;
+  const hasInitializedRef = useRef(false);
+  const takeoffRef = useRef<{ animId: string; yBonus: number; scaleBonus: number }>({
+    animId: "",
+    yBonus: 0,
+    scaleBonus: 0,
+  });
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
     if (!groupRef.current) return;
     const now = performance.now();
-    const baseYOffset = inRiver ? 0.12 : 0.22;
 
-    // 1. Check if this piece is currently the moving piece in `activeAnimation`
-    if (activeAnimation && activeAnimation.pieceId === piece.id) {
-      const elapsed = now - activeAnimation.startTime;
-      const progress = Math.min(1, elapsed / activeAnimation.duration);
+    // Read directly from Zustand store inside useFrame to guarantee 100% atomic
+    // synchronization between activeAnimation and piece.position (zero React prop tearing!)
+    const store = useGameStore.getState();
+    const livePiece = store.pieces.find((p) => p.id === piece.id) ?? piece;
+    const liveAnim = store.activeAnimation;
+    const liveSelected = store.selectedPiece?.id === piece.id;
+    const liveInvalid = store.invalidMoveFeedback;
+    const baseYOffset = isRiverCell(livePiece.position) ? 0.12 : 0.22;
+
+    // Initialize position & yaw immediately on first frame so pieces never lerp from (0,0,0)
+    if (!hasInitializedRef.current) {
+      const [initX, initY, initZ] = boardToWorldPosition(livePiece.position, baseYOffset);
+      groupRef.current.position.set(initX, initY, initZ);
+      groupRef.current.rotation.set(0, defaultYaw, 0);
+      groupRef.current.scale.setScalar(1);
+      hasInitializedRef.current = true;
+    }
+
+    // 1. Check if this piece is currently the moving piece in `liveAnim`
+    if (liveAnim && liveAnim.pieceId === piece.id) {
+      // Capture exact elevation & scale from selection state on frame 0 of the move
+      // so the piece never drops back down to the old cell before stepping forward!
+      if (takeoffRef.current.animId !== liveAnim.id) {
+        const [, startBaseY] = boardToWorldPosition(liveAnim.from, baseYOffset);
+        takeoffRef.current = {
+          animId: liveAnim.id,
+          yBonus: Math.max(0, groupRef.current.position.y - startBaseY),
+          scaleBonus: Math.max(0, groupRef.current.scale.x - 1),
+        };
+      }
+
+      const elapsed = now - liveAnim.startTime;
+      const progress = Math.min(1, Math.max(0, elapsed / liveAnim.duration));
       const transform = interpolateMoveTransform(
-        activeAnimation.from,
-        activeAnimation.to,
-        activeAnimation.moveType,
+        liveAnim.from,
+        liveAnim.to,
+        liveAnim.moveType,
         progress,
-        baseYOffset
+        baseYOffset,
+        defaultYaw,
+        takeoffRef.current.yBonus,
+        takeoffRef.current.scaleBonus
       );
 
       groupRef.current.position.set(...transform.position);
       groupRef.current.scale.setScalar(transform.scaleMultiplier);
-      groupRef.current.rotation.set(transform.pitchAngle, transform.targetYaw, 0);
+      groupRef.current.rotation.set(transform.pitchAngle, transform.yawAngle, 0);
       return;
     }
 
-    // 2. Check if this piece is currently the DEFENDER being captured in `activeAnimation`
-    if (activeAnimation && activeAnimation.capturedPiece?.id === piece.id) {
-      const elapsed = now - activeAnimation.startTime;
-      const progress = Math.min(1, elapsed / activeAnimation.duration);
-      const [wx, wy, wz] = boardToWorldPosition(piece.position, baseYOffset);
+    // 2. Check if this piece is currently the DEFENDER being captured in `liveAnim`
+    if (liveAnim && liveAnim.capturedPiece?.id === piece.id) {
+      const elapsed = now - liveAnim.startTime;
+      const progress = Math.min(1, Math.max(0, elapsed / liveAnim.duration));
+      const [wx, wy, wz] = boardToWorldPosition(livePiece.position, baseYOffset);
 
       if (progress < 0.55) {
         // Brace for impact
@@ -636,54 +670,55 @@ export function GamePiece({ piece }: GamePieceProps) {
     }
 
     // 3. Standard static/idle state on its cell
-    const [targetX, targetY, targetZ] = boardToWorldPosition(piece.position, baseYOffset);
+    const [targetX, targetY, targetZ] = boardToWorldPosition(livePiece.position, baseYOffset);
 
     // Selection bounce
-    const selectBounce = isSelected
+    const selectBounce = liveSelected
       ? Math.abs(Math.sin(clock.getElapsedTime() * 5.2)) * 0.16 + 0.06
       : 0;
 
     // Invalid move shake feedback
     let shakeX = 0;
     if (
-      invalidMoveFeedback &&
-      invalidMoveFeedback.pieceId === piece.id &&
-      Date.now() - invalidMoveFeedback.timestamp < 500
+      liveInvalid &&
+      liveInvalid.pieceId === piece.id &&
+      Date.now() - liveInvalid.timestamp < 500
     ) {
-      const shakeElapsed = (Date.now() - invalidMoveFeedback.timestamp) / 500;
+      const shakeElapsed = (Date.now() - liveInvalid.timestamp) / 500;
       shakeX = Math.sin(shakeElapsed * Math.PI * 10) * 0.12 * (1 - shakeElapsed);
     }
 
     // Hover scale interpolation
-    const targetScale = isSelected ? 1.12 : hovered ? 1.08 : 1.0;
+    const targetScale = liveSelected ? 1.12 : hovered ? 1.08 : 1.0;
+    const smoothFactor = Math.min(1, 1 - Math.exp(-18 * delta));
 
     groupRef.current.position.x = THREE.MathUtils.lerp(
       groupRef.current.position.x,
       targetX + shakeX,
-      0.22
+      smoothFactor
     );
     groupRef.current.position.y = THREE.MathUtils.lerp(
       groupRef.current.position.y,
       targetY + selectBounce,
-      0.22
+      smoothFactor
     );
     groupRef.current.position.z = THREE.MathUtils.lerp(
       groupRef.current.position.z,
       targetZ,
-      0.22
+      smoothFactor
     );
 
     const currentScale = groupRef.current.scale.x;
-    const nextScale = THREE.MathUtils.lerp(currentScale, targetScale, 0.2);
+    const nextScale = THREE.MathUtils.lerp(currentScale, targetScale, smoothFactor);
     groupRef.current.scale.setScalar(nextScale);
 
-    // Smoothly return rotation to default facing orientation
-    groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, 0, 0.2);
-    groupRef.current.rotation.z = THREE.MathUtils.lerp(groupRef.current.rotation.z, 0, 0.2);
-    groupRef.current.rotation.y = THREE.MathUtils.lerp(
+    // Smoothly return rotation to default facing orientation using shortest angular path
+    groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, 0, smoothFactor);
+    groupRef.current.rotation.z = THREE.MathUtils.lerp(groupRef.current.rotation.z, 0, smoothFactor);
+    groupRef.current.rotation.y = lerpAngle(
       groupRef.current.rotation.y,
       defaultYaw,
-      0.18
+      smoothFactor
     );
   });
 
@@ -711,8 +746,8 @@ export function GamePiece({ piece }: GamePieceProps) {
   const pedestalRimColor = isSelected
     ? "#FFE66D"
     : hovered
-    ? "#FFF3B0"
-    : "#F4A261";
+      ? "#FFF3B0"
+      : "#F4A261";
 
   return (
     <group
@@ -746,6 +781,7 @@ export function GamePiece({ piece }: GamePieceProps) {
           <meshBasicMaterial
             color={isSelected ? "#FFD166" : currentPlayer === piece.player ? "#90E0EF" : "#FF758F"}
             transparent
+            depthWrite={false}
             opacity={isSelected ? 0.92 : 0.6}
             side={THREE.DoubleSide}
           />

@@ -22,6 +22,7 @@ import { chooseAIMove } from "@/game/ai";
 import { soundManager } from "@/game/audio";
 
 interface GameStore extends GameState {
+  gameSessionId: number;
   roomCode: string | null;
   playerNames: {
     red: string;
@@ -41,7 +42,22 @@ interface GameStore extends GameState {
   clearInvalidFeedback: () => void;
 }
 
+let pendingMoveTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingAITimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearPendingGameTimers() {
+  if (pendingMoveTimer) {
+    clearTimeout(pendingMoveTimer);
+    pendingMoveTimer = null;
+  }
+  if (pendingAITimer) {
+    clearTimeout(pendingAITimer);
+    pendingAITimer = null;
+  }
+}
+
 export const useGameStore = create<GameStore>((set, get) => ({
+  gameSessionId: 1,
   pieces: createInitialPieces(),
   currentPlayer: "red",
   selectedPiece: null,
@@ -67,6 +83,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   startGame: (mode, difficulty, roomCode) => {
+    clearPendingGameTimers();
     const resolvedMode = mode ?? get().gameMode;
     const resolvedDiff = difficulty ?? get().difficulty;
     const diffLabel =
@@ -79,7 +96,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     soundManager.playSfx("click");
     soundManager.startAmbient();
 
-    set({
+    set((state) => ({
+      gameSessionId: state.gameSessionId + 1,
       pieces: createInitialPieces(),
       currentPlayer: "red",
       selectedPiece: null,
@@ -105,7 +123,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             ? `Kỳ Thủ Phòng #${roomCode ?? "VN88"}`
             : "Kỳ Thủ Lam Sơn (P2)",
       },
-    });
+    }));
   },
 
   resetGame: () => {
@@ -114,14 +132,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   returnToMenu: () => {
+    clearPendingGameTimers();
     soundManager.playSfx("click");
-    set({
+    set((state) => ({
+      gameSessionId: state.gameSessionId + 1,
+      pieces: createInitialPieces(),
+      currentPlayer: "red",
       status: "menu",
       selectedPiece: null,
       validMoves: [],
+      winner: null,
+      winReasonVi: null,
+      capturedPieces: { red: [], blue: [] },
+      moveHistory: [],
+      lastMove: null,
       isAIThinking: false,
       activeAnimation: null,
-    });
+      invalidMoveFeedback: null,
+    }));
   },
 
   setGameMode: (mode) => {
@@ -279,8 +307,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       activeAnimation: anim,
     });
 
-    setTimeout(() => {
+    clearPendingGameTimers();
+    pendingMoveTimer = setTimeout(() => {
+      pendingMoveTimer = null;
       const currentState = get();
+      if (currentState.activeAnimation?.id !== anim.id) {
+        return;
+      }
       const result = executeMove(currentState.pieces, move);
 
       if (result.capturedPiece) {
@@ -302,7 +335,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       const isVictory = Boolean(result.winner);
       if (isVictory) {
-        soundManager.playSfx("victory");
+        const isAILoss =
+          currentState.gameMode === "single" && result.winner === "blue";
+        soundManager.playSfx(isAILoss ? "defeat" : "victory");
       }
 
       const shouldTriggerAI =
@@ -326,7 +361,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (shouldTriggerAI) {
         // Non-blocking AI thinking delay so player sees "AI đang suy nghĩ..."
         const thinkTime = 620 + Math.floor(Math.random() * 380);
-        setTimeout(() => {
+        pendingAITimer = setTimeout(() => {
+          pendingAITimer = null;
           const latest = get();
           if (
             latest.status !== "playing" ||

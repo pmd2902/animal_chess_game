@@ -25,7 +25,8 @@ export type SoundEffectType =
   | "jump"
   | "capture"
   | "invalid"
-  | "victory";
+  | "victory"
+  | "defeat";
 
 class SoundManager {
   private ctx: AudioContext | null = null;
@@ -197,6 +198,24 @@ class SoundManager {
           noteGain.connect(ctx.destination);
           noteOsc.start(start);
           noteOsc.stop(start + 0.46);
+        });
+        break;
+      }
+      case "defeat": {
+        // Descending pentatonic sigh when the player loses against AI
+        const notes = [523.25, 440.0, 392.0, 293.66];
+        notes.forEach((freq, idx) => {
+          const noteOsc = ctx.createOscillator();
+          const noteGain = ctx.createGain();
+          noteOsc.type = "sine";
+          const start = now + idx * 0.14;
+          noteOsc.frequency.setValueAtTime(freq, start);
+          noteGain.gain.setValueAtTime(0.25 * this.sfxVolume, start);
+          noteGain.gain.exponentialRampToValueAtTime(0.001, start + 0.48);
+          noteOsc.connect(noteGain);
+          noteGain.connect(ctx.destination);
+          noteOsc.start(start);
+          noteOsc.stop(start + 0.5);
         });
         break;
       }

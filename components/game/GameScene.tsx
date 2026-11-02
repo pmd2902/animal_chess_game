@@ -14,6 +14,7 @@ interface GameSceneProps {
 }
 
 export function GameScene({ isMenuPreview = false }: GameSceneProps) {
+  const gameSessionId = useGameStore((s) => s.gameSessionId);
   const pieces = useGameStore((s) => s.pieces);
   const selectPiece = useGameStore((s) => s.selectPiece);
 
@@ -64,7 +65,7 @@ export function GameScene({ isMenuPreview = false }: GameSceneProps) {
           <GameEnvironment />
           <GameBoard />
           {pieces.map((piece) => (
-            <GamePiece key={piece.id} piece={piece} />
+            <GamePiece key={`${gameSessionId}-${piece.id}`} piece={piece} />
           ))}
           <GameEffects />
           <CameraController isMenuPreview={isMenuPreview} />

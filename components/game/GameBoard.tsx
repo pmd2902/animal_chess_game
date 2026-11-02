@@ -246,6 +246,7 @@ function VietnameseTempleDen({
         <meshBasicMaterial
           color={isRed ? "#FF4D6D" : "#4CC9F0"}
           transparent
+          depthWrite={false}
           opacity={0.75}
           side={THREE.DoubleSide}
         />
@@ -366,6 +367,7 @@ function ValidMoveIndicator({
         <meshBasicMaterial
           color={color}
           transparent
+          depthWrite={false}
           opacity={0.9}
           side={THREE.DoubleSide}
         />
@@ -504,6 +506,7 @@ export function GameBoard() {
                   <meshBasicMaterial
                     color={isSelectedCell ? "#FFE66D" : "#90E0EF"}
                     transparent
+                    depthWrite={false}
                     opacity={0.8}
                     side={THREE.DoubleSide}
                   />
@@ -611,6 +614,7 @@ export function GameBoard() {
             <meshBasicMaterial
               color="#EF233C"
               transparent
+              depthWrite={false}
               opacity={0.85}
               side={THREE.DoubleSide}
             />
